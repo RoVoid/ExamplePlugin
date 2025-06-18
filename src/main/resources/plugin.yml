@@ -1,0 +1,4 @@
+name: ${project.name}
+version: ${project.version}
+main: robot.flaimMineshield.FlaimMineshield
+api-version: '1.21'
