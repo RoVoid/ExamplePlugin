@@ -23,57 +23,66 @@ import static io.papermc.paper.command.brigadier.Commands.argument;
 import static io.papermc.paper.command.brigadier.Commands.literal;
 
 public class BarrierManager implements Listener {
-    protected final List<Timer> timers = new ArrayList<>();
+    protected static final List<Timer> timers = new ArrayList<>();
 
     public BarrierManager() {
         FlaimMineshield.Plugin.getServer().getPluginManager().registerEvents(this, FlaimMineshield.Plugin);
         FlaimMineshield.Plugin.getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> event.registrar().register(buildBarrierCommand()));
-
     }
 
-    LiteralCommandNode<CommandSourceStack> buildBarrierCommand() {
+    public static void onDisable() {
+        int currentTick = FlaimMineshield.Plugin.getServer().getCurrentTick();
+        for (int i = 0; i < timers.size(); i++) {
+            Timer old = timers.get(i);
+            timers.set(i, new Timer(old.targetTick - currentTick, old.addRadius, old.time, old.command));
+        }
+    }
+
+    static LiteralCommandNode<CommandSourceStack> buildBarrierCommand() {
         return literal("barrierTimer")
                 .requires(source -> source.getSender().isOp())
                 .then(argument("секунды", integer(1))
                         .then(argument("радиус", floatArg())
-                                .then(argument("скорость", integer(0))
+                                .then(argument("время", integer(0))
                                         .then(argument("команда", greedyString())
                                                 .executes(ctx -> {
                                                     int seconds = getInteger(ctx, "секунды");
                                                     float radius = getFloat(ctx, "радиус");
-                                                    int speed = getInteger(ctx, "скорость");
+                                                    int speed = getInteger(ctx, "время");
                                                     String command = getString(ctx, "команда");
 
-                                                    FlaimMineshield.BarrierManager.appendTimer(seconds, radius, speed, command);
+                                                    appendTimer(seconds, radius, speed, command);
                                                     ctx.getSource().getSender().sendMessage(Component.text("⏳ Запущен таймер границы"));
                                                     return 1;
                                                 })))))
                 .build();
     }
 
-    public void appendTimer(int seconds, float addRadius, int speed, String command) {
-        appendTimer(new Timer(FlaimMineshield.Plugin.getServer().getCurrentTick() + seconds * 20, addRadius, speed, command));
+    public static void appendTimer(int seconds, float addRadius, int time, String command) {
+        appendTimer(new Timer(FlaimMineshield.Plugin.getServer().getCurrentTick() + seconds * 20, addRadius, time, command));
     }
 
-    private void appendTimer(Timer timer) {
+    private static void appendTimer(Timer timer) {
         timers.add(timer);
         timers.sort(Comparator.comparingInt(t -> t.targetTick));
     }
 
     @EventHandler
-    public void onTick(ServerTickEndEvent event) {
+    public static void onTick(ServerTickEndEvent event) {
         if (timers.isEmpty()) return;
 
         int currentTick = event.getTickNumber();
-        while (!timers.isEmpty() && timers.getFirst().targetTick <= currentTick) {
-            timers.removeFirst().execute();
-        }
+        if (timers.getFirst().targetTick <= currentTick)
+            timers.removeFirst().execute(); // Может вызвать потерю точности во времени
+//        while (!timers.isEmpty() && timers.getFirst().targetTick <= currentTick) {
+//            timers.removeFirst().execute();
+//        }
     }
 
-    public record Timer(int targetTick, float addRadius, int speed, String command) {
+    public record Timer(int targetTick, float addRadius, int time, String command) {
         public void execute() {
             var server = FlaimMineshield.Plugin.getServer();
-            server.dispatchCommand(Bukkit.getConsoleSender(), "worldborder add " + (addRadius * 2) + " " + speed);
+            server.dispatchCommand(Bukkit.getConsoleSender(), "worldborder add " + (addRadius * 2) + " " + time);
             if (!command.isEmpty())
                 server.dispatchCommand(Bukkit.getConsoleSender(), command);
         }
